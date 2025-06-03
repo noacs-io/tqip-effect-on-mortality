@@ -17,7 +17,7 @@ This study evaluates the effect of implementing a trauma quality improvement (QI
 
 ---
 
-## Repository Contents
+## Repository contents
 
 ```
 ├── docs/                        # Manuscript text
@@ -31,7 +31,7 @@ This study evaluates the effect of implementing a trauma quality improvement (QI
 
 ---
 
-## How to Reproduce the Manuscript
+## How to reproduce the manuscript
 
 1. Clone the repository.
 
@@ -55,7 +55,7 @@ This repository is licensed under the **Creative Commons Attribution 4.0 Interna
 
 ---
 
-## Related Resources
+## Related resources
 
 * [Public anonymised dataset (hosted separately)](https://doi.org/xx.xxxx/zenodo.XXXXXXX) (Available upon publication)
 * [ClinicalTrials.gov ID NCT03235388](https://clinicaltrials.gov/study/NCT03235388)
