@@ -1,0 +1,1032 @@
+---
+title: "Effects of trauma quality improvement programme implementation on mortality: A nonrandomised controlled trial"
+output:
+  bookdown::word_document2:
+    number_sections: false
+  html_document:
+  bookdown::pdf_document2: 
+bibliography: ref.bib
+csl: bmj.csl
+date: "Date: `r format(Sys.time(), '%d %B, %Y')`"
+version: "Version: `r format(Sys.time(), '%d %B, %Y')`"
+toc: false
+---
+
+```{r load-packages-and-data, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(dplyr)        # Data manipulation
+library(magrittr)     # Pipe (%>%) and operators
+library(ggplot2)      # Plotting
+library(mgcv)         # GAMs
+library(lubridate)    # Dates
+library(purrr)        # List operations
+library(tidyr)        # Reshaping data
+library(stringr)      # Strings
+library(tibble)       # Tidy data frames
+library(gt)           # Tables
+library(gtsummary)    # Summary tables
+library(tidygam)      # Tidy GAM output
+library(broom)        # Tidy model results
+library(bookdown)     # R Markdown books
+library(grid)         # Graphics system
+
+# Source functions
+files <- list.files(path = "../R", full.names = TRUE)
+walk(files, source)
+
+# Read data
+dataset_file <- "../data/public_dataset.csv"
+data <- read.csv(dataset_file)
+codebook_file <- "../data/public_codebook.csv"
+codebook <- read.csv(codebook_file)
+
+# We use listwise deletion for non-complete cases
+# Use the function ReturnModelData to get summary timeseries data for modelling
+model_data <- ReturnModelData(data %>% filter(!is.na(hd), !is.na(month)))
+
+# Model data
+model_data.i <- model_data %>% filter(intervention_center == "Intervention centres")
+model_data.c <- model_data %>% filter(intervention_center == "Control centers")
+
+## Create table data
+# For tables we often want to expand labels, here we populate labels we want to expand according to their definition in the codebook
+columns_to_modify <- c("tran", "sex", "dct_factor", "dus_factor", "di_factor")   # Select columns with mapped labels to the codebook
+
+tabledata <- AddLabels(data, codebook, columns_to_modify) %>%
+  mutate(male = case_when(
+    sex == "Male" ~ TRUE,
+    sex != "Male" & !is.na(sex) ~ FALSE,
+    TRUE ~ NA
+  )) %>%
+  mutate(transfers = case_when(
+    tran == "Transferred from other health facility" ~ TRUE,
+    !is.na(tran) ~ FALSE,
+    TRUE ~ NA
+  ))
+
+# Create named vector from codebook, this can be used to expand names to labels in tables
+name_to_label <- setNames(codebook$table_label, codebook$name)
+name_to_label["post_intervention * intervention"] <- "Intervention Effect"
+name_to_label["transfers"] <- "Transfers"
+name_to_label["male"] <- "Sex male"
+
+# Convert named character vector to list of formulas for use in gtsummary
+name_to_label <- as.list(name_to_label)
+
+df <- model_data %>% select(intervention_center, study_month, post_intervention, month, hd)
+
+df.i <- df %>% filter(intervention_center == "Intervention centres")
+df.c <- df %>% filter(intervention_center == "Control centers")
+
+# Create a new dataset, where the intervention is set to 0 to model the cf.
+df.i.cf <- df.i %>% mutate(post_intervention = 0)
+df.c.cf <- df.c %>% mutate(post_intervention = 0)
+
+# Set table themes
+
+theme_gtsummary_journal(journal = "nejm")
+theme_gtsummary_compact()
+```
+
+# Cover page
+
+## Corresponding author
+
+Johanna Berg, MD Department of Global Public Health, Karolinska Institutet, Stockholm, Sweden Department of Emergency and Internal Medicine, Skåne University Hospital, Malmö, Sweden\
+ORCID: <https://orcid.org/0000-0001-7553-7337>\
+Email: [johanna.berg\@ki.se](mailto:johanna.berg@ki.se){.email}\
+Telephone: +46730659092 Address: Department of Global Public Health, Karolinska Institutet, SE-171 77, Stockholm, Sweden
+
+## Author list
+
+Johanna Berg, MD Department of Global Public Health, Karolinska Institutet, Stockholm, Sweden Department of Emergency and Internal Medicine, Skåne University Hospital, Malmö, Sweden. ORCID: <https://orcid.org/0000-0001-7553-7337>
+
+Siddarth David, PhD Doctors For You, India Department of Global Public Health, Karolinska Institutet, Sweden. ORCID: <https://orcid.org/0000-0002-4848-2358>
+
+Girish D. Bakhshi, MS, MRCSEd.Uk, FACS, Grant Government Medical College & Sir J.J. Group of Hospitals, Mumbai-400008, Maharashtra, India. ORCID: <https://orcid.org/0000-0001-9542-4428>
+
+Debojit Basak, SSKM Hospital/IPGME&R
+
+Shamita Chatterjee, MS, FMAS, FAIS, Department of Surgery, IPGME&R-SSKM Hospital, Kolkata, India. ORCID <https://orcid.org/0000-0002-9460-108X>
+
+Kapil Dev Soni, MD, Department of Critical and Intensive Care, JPN Apex Trauma Centre, All India Institute of Medical Sciences, New Delhi, India. ORCID: <https://orcid.org/0000-0003-1214-4119>
+
+Ulf Ekelund, MD, PhD, Emergency Medicine, Department of Clinical Sciences Lund, Lund University, Lund, Sweden. Department of Emergency Medicine, Skåne University Hospital, Lund, Sweden. ORCID: <https://orcid.org/0000-0002-0951-1582>
+
+Li Felländer-Tsai, MD, PhD Division of Orthopaedics and Biotechnology, Department of Clinical Science, Intervention and Technology, Karolinska Institutet, Stockholm, Sweden. Reconstructive Orthopaedics, Karolinska University Hospital, Stockholm, Sweden. ORCID: <https://orcid.org/0000-0003-0693-6080>
+
+Manjul Joshipura, MD Academy of Traumatology (India), Ahmedabad, India. ORCID: <https://orcid.org/0000-0001-5891-8234>
+
+Tamal Khan, All India Institute of Medical Sciences, Patna- 801507, India
+
+Monty Khajanchi, DNB, Department of General Surgery, Seth G. S Medical College & K.E. M Hospital, Mumbai, India ORCID: <https://orcid.org/0000-0002-0898-6391>
+
+Mohan L N, MBBS, MS, FRCS, Vydehi Institute of Medical Sciences and Research Centre, Bangalore. India ORCID: <https://orcid.org/0000-0002-3503-832X>
+
+Anurag Mishra, MBBS, MS, DNB, MNAMS, FACS, FAIS Department of Surgery, Maulana Azad Medical College, New Delhi, India
+
+Max Petzold, PhD ORCID: 0000-0003-4908-2169 School of Public Health and Community Medicine, Institute of Medicine, University of Gothenburg, Gothenburg, Sweden
+
+Sendhil Rajan, MBBS MS MCh FEBS FRCS Department of Surgery, Norfolk & Norwich University Hospital, Colney Ln, Colney, Norwich NR4 7UY, United Kingdom. ORCID: <https://orcid.org/0000-0003-3161-5553>
+
+Nobhojit Roy, MS, PhD, MPH The George Institute for Global Health, India Department of Global Public Health, Karolinska Institutet, Stockholm, Sweden
+
+Rajdeep Singh, MS, DNB, FACS, FRCS Department of Surgery, Maulana Azad Medical College, Delhi, India. ORCID: <https://orcid.org/0000-0001-6593-2624>
+
+Martin Gerdin Wärnberg, MD, PhD Department of Global Public Health, Karolinska Institutet, Stockholm, Sweden Function Perioperative Medicine and Intensive Care, Karolinska University Hospital, Solna, Sweden. ORCID: <https://orcid.org/0000-0001-6069-4794>
+
+\pagebreak
+
+# Abstract
+
+**Objectives**: To determine whether implementing a trauma quality improvement programme using audit filters improves outcomes for adult trauma patients.
+
+**Design**: Prospective controlled interrupted time series study using a generalised additive model applied to monthly aggregated data, with a secondary analysis using difference-in-differences.
+
+**Setting**: Multicentre study at four tertiary care hospitals in urban India from 2017 to 2022.
+
+**Participants**: A total of 10,143 adult trauma patients admitted with a history of trauma, defined by external causes listed in block V01–Y36, chapter 20 of the ICD-10. Median age was 35 years (IQR 26 to 50), and 83% were men.
+
+**Interventions**: Two hospitals implemented a trauma quality improvement programme using audit filters after a one-year observation period (intervention arm), while two hospitals continued usual care without intervention (control arm).
+
+**Main outcome measures**: Primary outcome was all-cause in-hospital mortality. 30-day mortality, originally designated as the primary outcome, was analysed as a secondary outcome due to lower-than-expected prospective inclusion rates, which limited statistical power.
+
+**Results**: In the intervention arm, in-hospital mortality decreased by an estimated -11.2% (95% CI −16.0% to −5.5%, p<0.001), with no significant change in the control arm -0.5% (95% CI −4.0% to 5.4%, p=0.835). No significant seasonal effects or autocorrelation were observed. Secondary difference-in-differences analysis showed significant reductions in in-hospital mortality −12% (95% CI −16 to −9%; p<0.001) and 30-day mortality −15% (95% CI −19 to −11%; p<0.001) in the intervention arm compared to controls. However, external factors, including the opening of a dedicated trauma centre and the COVID-19 pandemic, may have influenced these results.
+
+**Conclusions**: Implementing trauma quality improvement programmes using audit filters may reduce mortality in adult trauma patients. Further research is needed to confirm these findings in other settings, clarify underlying mechanisms, and ensure sustainability over time.
+
+**Trial registration**: Trauma Audit Filter Trial, ClinicalTrials.gov ID NCT03235388, <https://clinicaltrials.gov/study/NCT03235388>
+
+\pagebreak
+
+# Summary boxes
+
+## What is already known on this topic
+
+• Trauma is a leading cause of mortality and morbidity worldwide, with 90% of the burden occurring in low- and middle-income countries.
+
+• Trauma quality improvement programmes have been recommended to address inequalities in care, but despite their widespread use in high-income countries there is no high-level evidence that these programmes improve patient outcomes.
+
+## What this study adds
+
+• We present the first prospective quasi-experimental trial investigating if implementing trauma quality improvement programmes improves mortality.
+
+• Our results suggest that these programmes can improve mortality-rates in adult trauma patients, particularly in settings with high numbers of preventable deaths.
+
+• However, the mechanisms behind their effectiveness remain poorly understood.
+
+# Introduction
+
+Quality improvement initiatives are frequently proposed in health systems to enhance patient safety and improve care.[@Dixon-Woods2016-hc] However, evidence for their effectiveness in improving patient outcomes remains limited. Several studies report conflicting results, highlighting the need for systematic, evidence-based approaches and rigorous evaluation of these initiatives.[@Dixon-Woods2016-hc; @Marshall2013-yl[]] Additionally, many interventions lack a clear theoretical foundation to explain their mechanisms of action.[@Dixon-Woods2016-hc; @Hut-Mossel2021-vb]
+
+In the field of trauma care, trauma is defined as injury to the human body caused by external factors. The development of trauma systems integrating prevention, pre- and intrahospital care, and rehabilitation has been essential for the improvement in care in high-income countries over the last decades.[@shackford1986; @Davenport:2010; @Alharbi2021-yt; @Celso2006-ot] Still, trauma results in more than four million deaths annually and is the leading cause of death among individuals aged 10-29 years.[@GBDihme1:2019] Over two million lives could be saved each year if mortality rates in low- and middle-income countries (LMICs) were the same as those in high-income countries (HICs)
+
+As one part of trauma systems, trauma quality improvement programmes have evolved. These programmes encompass an ongoing process that includes identifying deviations from care standards, analysing these findings, evaluating factors for improvement, and implementing corrective action plans to improve patient care.[@InjuryControl:TraumaPerformanceImprovement; @WHO:vq; @Juillard:2009ci] Identifying cases with deviations from care traditionally uses audit filters, in some areas referred to as process quality indicators. They are predefined statements that represent ideal care standards, for example, "Patients with a Glasgow Coma Scale (GCS) score of less than 8 should receive a definitive airway".[@WHO:vq; @Willis2007] These filters are used to flag individual patient cases so that the care can be reviewed, potential opportunities for improvement can be identified, and corrective strategies can be implemented. This process is resource-intensive because it requires continuous data collection and audit filter tracking.[@Evans:vb; @WHO:vq]
+
+The American College of Surgeons released the first trauma audit filters as part of the guidelines on trauma care in 1987.[@ACSCOT1987] Since then, the use of audit filters and trauma quality improvement programmes has been widely applied in HICs, and in 2009 they were recommended by the WHO as one way to mitigate the inequalities of trauma care globally—despite there being no high-level evidence for their effectiveness in improving patient outcomes.[@Evans:vb] Our aim was therefore to assess whether implementing a trauma quality improvement programme using audit filters improved patient outcomes.
+
+```{r audit-filter-process, fig.cap="Audit filter review process", echo=FALSE, warning = FALSE, eval = FALSE}
+knitr::include_graphics("../img/Review-process.png")
+```
+\pagebreak
+
+# Methods
+
+## Study design and setting
+
+We conducted a controlled interrupted time series study across four hospitals in urban India (ClinicalTrials.gov identifier NCT03235388[@TAFTClinicalTrials]). All tertiary care hospitals have approximately 1500 beds and in-house clinical specialities to care for trauma patients. None of the hospitals used any structured trauma quality improvement process prior to this study. The study had three phases: an observation phase lasting 14 months in all four hospitals to establish baseline outcomes, an implementation phase lasting six months, during which two hospitals were randomized to implement a trauma quality improvement programme with audit filters, and an intervention phase lasting 41 months. The intervention phase was extended by 18 months due to the COVID-19 pandemic. We performed an interim analysis 15 months after the initiation of the intervention to asses the quality of the data and identify unexpected changes in outcomes. We followed the TREND checklist for reporting of non-randomised clinical trials.[@Des_Jarlais2004-yt]
+
+## Intervention and control
+
+For the intervention centres, a multidisciplinary review group was established at each centre, including representatives from all departments involved in trauma care: emergency/casualty officers, general surgery, anaesthesia, burns and plastics, orthopaedics, radiology, and neurosurgery. The local principal investigator at each centre recruited senior healthcare staff from each department. Within this group, an anonymous online Delphi process was conducted to identify which audit filters would be most useful to implement at each hospital [@Berg:2022]. Further details on the Delphi process, including participant composition and procedures, are available in the cited publication. A list of implemented audit filters is included as supplementary material. 
+
+A project officer prospectively included patients and identified specific audit filter violations through direct observation and data collection. Structured data were collected on violations, process outcomes, treatments, interventions, and patient outcomes during the hospital stay. These cases were compiled into automated structured reports every 4–6 weeks, which served as the basis for discussions at the multidisciplinary board review meetings. During each meeting, cases were reviewed and improvement actions identified. Progress on these actions was followed up in subsequent meetings. During the implementation phase, members of the core research team with experience in facilitating review discussions attended each meeting to guide and support the discussions, after this, only the local review board attended. 
+
+In the control centres, no intervention was implemented. They continued treating trauma patients using standard care, without a quality improvement process. The centre-specific data collected for this study were available to both intervention and control centres but were not used in any structured way in the control centres to inform or direct care. Weekly calls were held between the core research team and project officers at each hospital to support data collection and address operational issues. In intervention centres, multidisciplinary review meetings were conducted independently by the local teams, with no involvement from the research team beyond facilitating the underlying reports based on collected data.
+
+## Participants
+
+### Inclusion criteria and enrollment
+
+We included adults aged 18 years and older admitted for in-hospital care with a history of trauma, defined by International Classification of Diseases, tenth revision (ICD-10) chapter 20, codes V01-Y36 for external causes of morbidity and mortality, as the reason for admission. Project officers were trained to record vital signs with standard equipment for patients across rotating shifts (day, evening, and night). Each shift comprised six hours for enrolling new patients in the emergency department and two hours for follow-up of previously included patients. 
+
+### Retrospective inclusion
+
+Due to lower than expected prospective inclusion rates, particularly during the COVID-19 pandemic, we retrospectively included patients to achieve the required sample size for the primary statistical analysis. Using hospital records, we randomly selected trauma patients admitted each month. As informed consent could not be obtained, only basic, reliably recorded data were collected: date of admission, age, sex, mechanism of injury, and in-hospital mortality. Data were extracted from ward books and paper charts, as no electronic health record was available.
+
+### Data collection and quality control
+
+Initial data collection was performed using paper forms, and the data were then periodically entered into a digital data collection tool and uploaded to secure servers. Patient identifiers were not uploaded, and identification was only possible through the original paper records, which were stored at each hospital in compliance with local regulations. Basic data validation was performed at the time of entry, and double entry of all variables was performed after all the data had been collected to minimize the risk of transfer errors. Quality control visits were conducted each quarter with project officers from different hospitals evaluating the data collection processes based on predefined criteria.
+
+## Outcomes and covariates
+
+Our primary outcome was all-cause in-hospital mortality. Information on 30-day and 90-day mortality was collected from medical records if the patient died during the hospital stay, otherwise, it was obtained through telephone follow-up. 30-day mortality, originally designated as the primary outcome, was analysed as a secondary outcome due to lower-than-expected prospective inclusion rates. We also collected data on additional secondary outcomes, including length of stay and intensive care unit (ICU) admissions. Data on several covariates, such as age, sex, vital signs, injury severity, and diagnostic procedures, were collected to describe and compare cohorts and, if needed, to adjust for case-mix and differences between hospitals.
+
+## Study execution
+
+One principal investigator and one co-principal investigator were recruited for each participating hospital. These were all experienced trauma clinicians with extensive local knowledge and research interest.
+
+### Observation phase (Month 1-14)
+
+The participating hospitals started data collection at the same time to establish baseline outcomes. Weekly meetings were held with all project officers and the core research team to identify and address any issues related to data collection.
+
+### Implementation phase (Month 15-20)
+
+The participating hospitals were paired so that the two hospitals with the highest and lowest volumes formed one pair, and the two remaining hospitals formed the second pair. One pair of hospitals was then randomly selected to implement the trauma quality improvement programme, becoming intervention hospitals, while the other two were control hospitals. The process of data collection remained the same at all sites.
+
+At the intervention hospitals, a two-day session on the background and rationale of trauma audit filters was held by representatives from the core research team. This session was attended by a multidisciplinary team of surgeons/physicians, anaesthetists, administrators and nurses involved in trauma care. The local review board and audit filters selected as described previously. During the implementation phase, participants from the core research team attended audit filter review meetings to facilitate the discussion and formulate corrective strategies accordingly.
+
+### Intervention phase (Months 21-42)
+
+The intervention hospitals continued the data collection, both for base data and for audit filter deviations. The trauma audit review board continued to analyse deviations, implementing corrective strategies. The meetings were held without participation from the core research team. Three months after the intervention phase started, the largest intervention hospital opened a dedicated trauma centre. The control hospitals continued with base data collection.
+
+## Statistical analysis
+
+As we collected both prospective and retrospective data, with the prospective cohort being a random subset from the combined prospective and retrospective data, some pre-defined analysis is only possible to do for the prospective cohort.
+
+### Primary analysis
+
+Our primary analysis was a segmented interrupted time series model using a generalized additive model (GAM) to estimate the effect of the intervention on in-hospital mortality. To assess robustness, we conducted two secondary analyses: a difference-in-differences analysis using individual-level data, and an unadjusted pre-post analysis.
+
+For our primary analysis, we applied a segmented Generalized Additive Model (GAM) to estimate the effect of the intervention on mortality.  [@Shadish2014] Data were aggregated by study month across intervention and control arms, with each observation representing the average outcome for all patients enrolled during that month. The intervention was modelled as a step change, represented by a binary indicator. Time was included as a smooth term to flexibly capture potential non-linear trends. Calendar month was entered as a cyclic cubic spline with 12 knots to adjust for seasonality. The model used a beta regression distribution with a logit link, suitable for modelling bounded continuous outcomes between 0 and 1. Estimation was performed using restricted maximum likelihood (REML). Autocorrelation was assessed using the Box-Ljung test (lag = 12, degrees of freedom = 0), applied separately to response residuals from the intervention and control arms.
+
+GAM model specification:
+
+$$
+\text{logit}(\mathbb{E}[Y]) = \beta_0 + \beta_1 \cdot \text{post\_intervention} + f_1(\text{study\_month}) + f_2(\text{month})
+$$
+
+We developed a counterfactual model to compare predicted outcomes under scenarios without the intervention.
+
+## Sample size considerations
+
+The sample size requirements for interrupted time series analyses depend on several factors, including model complexity, data variance and the  spread of observations. For our primary analysis, we chose to adhere to published guidelines stating that at least twelve observations are needed during the observation phase and twelve observations are needed during the intervention phase and that each observation should be an aggregate of at least 100 patients. [@Wagner2002] Our use of a large GAM introduced extra complexity, and we estimated that 100 patients/arm/month and an extended intervention phase were needed to detect the potential impact of the intervention. This sample size allowed us to detect a reduction in mortality from 20% to 15% (power 0.8, alpha 0.05) using a pre-post design.
+
+```{r additional_power_calculations, echo = FALSE}
+library(pwr)
+# Using proportion based calculations
+baseline <- 0.10  # baseline mortality rate
+target <- 0.05  # target mortality rate
+
+# Calculate the required sample size
+power.prop.test <- power.prop.test(p1 = baseline, p2 = target, sig.level = 0.05, power = 0.8)
+```
+
+### Secondary and subgroup analysis
+
+For the secondary analysis, we conducted a difference-in-differences (DiD), using linear regression on individual-level data for prospectively included patients. We adjusted for confounders selected based on clinical relevance and observed baseline differences between arms. To assess the parallel trends assumption, we plotted pre-intervention trends in in-hospital and 30-day mortality stratified by study arm, and visually inspected the trajectories. In addition, we tested for interaction between time (study month) and group (intervention vs control) using pre-intervention prospective data. All analyses were conducted in R [@R], using the `mgcv` package for GAM modelling. 
+
+We conducted two pre-specified subgroup analyses for major trauma and potentially salvageable trauma patients. We defined a major trauma patient as any patient who was in the hospital for more than three days with an Injury Severity Score (ISS) >15 or who died within three days of arrival, and a potentially salvageable trauma patient as any patient with 15<ISS<24. Due to limited statistical power to conduct stratified interrupted time series analyses, these subgroup analyses were conducted using the secondary difference-in-differences approach. To account for multiple comparisons, we applied the Holm correction method [@Holm1979].
+
+### Sensitivity analyses
+
+We conducted two pre-specified sensitivity analyses: an unadjusted pre-post analysis using a two-sample Z-test for proportions, and an interrupted time series analysis excluding the implementation phase. Three post hoc analyses were also conducted: excluding the period after a trauma centre opened at one intervention hospital, excluding the COVID-19 phase, and performing unadjusted and adjusted interrupted time series analyses in the prospectively included cohort to evaluate whether observed effects on mortality were confounded by changes in case mix over time.
+
+## Missing data and data processing
+
+We added an analysis of missing data to the analysis plan to assess whether complete case analysis would be appropriate. We examined associations between missingness and key variables using the R package finalfit [@Rfinalfit], which applies chi-squared tests for categorical variables and univariate logistic regression for continuous variables, with missingness as the outcome. If no significant associations were found, indicating data were Missing Completely at Random (MCAR), we planned to proceed with complete case analysis. If significant associations were found, suggesting data were Missing at Random (MAR), we planned to use multiple imputation by chained equations (MICE), provided that the proportion of missing data was >5% and that the available data supported stable estimation of the imputation model. If data were deemed likely to be Missing Not at Random (MNAR), complete case analysis would be applied with caution, and sensitivity analyses would be considered. The Abbreviated Injury Scale (AIS) and Injury Severity Score (ISS) were calculated from ICD-10 codes using the R package icdpicr [@Ricdpicr].
+
+## External events during the study period
+
+During the study period, two external events occurred that may have influenced patient outcomes. First, three months after the intervention phase began, the largest intervention hospital opened a dedicated trauma centre. Although all surgical and radiology services for trauma were previously available, they were distributed across separate buildings and wards, with no dedicated units for trauma patients. With the opening of the trauma centre, these services were consolidated into a single 180-bed facility with in-house CT, operating theatres, and both ICU and general wards dedicated to trauma care. Nurses also received trauma-specific training prior to the opening.
+
+Second, the COVID-19 pandemic vastly disrupted hospital operations at all sites. Prospective patient inclusion was halted between April and December 2020, and review meetings were paused until mid-2021. The second intervention hospital was converted into a COVID-19 facility for much of 2020 and 2021, effectively eliminating trauma admissions during this period. In addition to straining hospital capacity, the pandemic reduced population mobility and led to an overall decline in trauma incidence.
+
+## Patient and public involvement
+
+We have not had any patient or public involvement during the planning or execution of this study.
+
+## Deviations from study protocol
+
+The intended primary outcome was 30-day mortality, but this became unfeasible due to low prospective inclusion. We therefore defined in-hospital mortality as the primary outcome, for which the study was adequately powered. 30-day mortality was analyzed as a secondary outcome. We also added two non-prespecified analyses: an analysis of missing data and a difference-in-differences analysis. These were introduced because we lacked sufficient power for a time-series analysis of 30-day mortality and observed an unexpected baseline difference in mortality between study arms. The difference-in-differences approach allowed formal comparison between arms with adjustment for confounders. Not all protocol outcomes are reported here; notably, quality of life results will be published separately.
+
+## Transparency declaration
+
+The guarantor affirms that this manuscript is an honest, accurate, and transparent account of the study being reported. No important aspects of the study have been omitted. Discrepancies from the study protocol have been reported and explained.
+
+## Ethical considerations
+
+The need for informed consent to participate in the intervention was not deemed applicable, and we were granted waivers of informed consent for recording vital signs, demographic parameters and in-hospital outcomes. The project officers obtained written consent for telephone follow-up. Ethical approval was granted by the Swedish Ethical Review Authority (approved 2017-06-07 2017/930-31/2), as well as by all local ethical review boards at each participating hospital (Maulana Azad Medical College (MAMC) - approved 2017-07-19 F.1/IEC/MAMC/(57/02/2017/No 113. SSKM/IPGME&R, Kolkata -- approved 2017-08-21, IPGME&R/IEC/2017/396. JJ Hospital, Mumbai -- approved 2017-08-22, No. IEC/Pharm/CT/111/A/2017. St. Johns, Bangalore -- approved 2017-08-24, 160/2017).
+
+## Data sharing
+
+The code for this publication and an anonymised dataset from the clinical trial are available on Zenodo and GitHub under a Creative Commons Attribution 4.0 International License (CC BY 4.0)[@Berg2025-tqip-manuscript]. The dataset has been de-identified through categorisation and removal of indirect identifiers to minimise the risk of re-identification.
+
+# Results
+
+```{r result_numbers, echo = FALSE}
+num_included <- nrow(data)
+num_prospective <- nrow(data %>% filter(retro == FALSE))
+num_retrospective <- nrow(data %>% filter(retro == TRUE))
+num_missing_s30d <- nrow(data %>% filter(is.na(s30d)))
+num_missing_hd <- nrow(data %>% filter(is.na(hd)))
+num_screened_af <- 1455
+num_meetings <- NULL
+
+num_screened_af <- 1454
+num_meetings <- NA
+
+mean_inclusions <- data %>%
+  count(study_month) %>%
+  summarise(
+    mean_n = mean(n),
+    sd_n = sd(n)
+  )
+
+num_non_target_months <- nrow(data %>% count(study_month) %>%
+  filter(n < 200))
+
+num_target_months <- nrow(data %>% count(study_month) %>%
+  filter(n > 199))
+```
+
+We included `r num_included` patients between October 2017 and October 2022. Of these patients, `r num_prospective` were prospectively included (Figure 1). We included an average of `r round(mean_inclusions$mean_n)` (SD `r round(mean_inclusions$sd_n)`) patients per month, `r num_non_target_months` out of 61 months did not reach the target number of inclusions, due to low inclusion rates and lower number of patients during COVID-19.
+
+Patient characteristics and missing data counts are presented in Table 1 (all patients) and Table 2 (prospectively included patients). For the primary analysis, missing data were minimal for in-hospital mortality (0.6%) and absent for study month. No significant associations were found between missingness and examined variables, except for one control arm month, which was deemed unlikely to affect results. In the secondary analysis using the adjusted DiD model, missingness was associated with GCS, ISS, and shock for 30-day mortality. The proportion of missing data was low for GCS (1.6%) and shock (2.2%), but higher for ISS (12.5%). Given the exploratory nature of the secondary analysis and the challenge of correctly imputing ISS, all statistical models used complete case analysis.
+
+In the intervention arm, we prospectively screened and collected structured data on `r num_screened_af` additional patients for audit filter violations to inform discussions in the multidisciplinary review meetings. A list of audit filters with the most violations is available in the supplementary material. Descriptively, in the intervention arm, intubations rose from 2.6% to 24%, ultrasound increased from 2.4% to 9% and computed tomography (CT) scanning from 31% to 42% indicating changes in clinical practice aligned with key audit filters following implementation of the trauma quality improvement programme (Table 1).
+
+```{r descriptive_table, echo = FALSE, warning = FALSE, message = FALSE}
+outcomes <- c("s24h", "hd", "s30d")
+covariates <- c("age", "male", "gcstot", "chock", "iss", "major_trauma", "dct_factor", "dus_factor", "di_factor", "daicu_factor")
+
+n_all <- nrow(data)
+n_prospective <- nrow(data %>% filter(!retro))
+n_retrospective <- nrow(data %>% filter(retro))
+
+project_variables <- c("intervention_text", "post_intervention_text", "retro")
+
+desc_variables <- c(covariates, outcomes, project_variables)
+desc_dataset <- tabledata %>% select(all_of(desc_variables)) %>% 
+  filter(!retro) %>%
+  select(-retro)
+
+# Update label names like "In-hospital mortality" instead of "Died in hospital"
+desc_prospective_table <- desc_dataset %>%
+  tbl_strata(
+    strata = "intervention_text",
+    ~.x %>%
+             tbl_summary(
+               by = "post_intervention_text",
+               statistic = list(all_continuous() ~ "{mean} ({sd})",
+                                          gcstot ~ "{median} ({p25}, {p75})",
+                                          age ~ "{median} ({p25}, {p75})"),
+               label = name_to_label,
+               missing_text = "Missing"
+              )
+    ) %>%
+  bold_labels() %>%
+  modify_caption(paste0("All prospectivly included patients n = ", nrow(desc_dataset))) %>%
+  modify_footnote(caption = "Shock is defined as systolic blood pressure < 95 mmHg with heart rate > 100 beats per minute at arrival. Major trauma defined as ISS > 15 and admitted for more than three days, or, died within three days.") %>%
+  as_gt() %>%
+  tab_options(paste0("All included patients n = ", nrow(desc_dataset)))
+
+
+outcomes <- c("hd")
+covariates <- c("age", "male", "transfers", "tyoi")
+project_variables <- c("intervention_text", "post_intervention_text", "retro")
+
+desc_variables <- c(covariates, outcomes, project_variables)
+desc_dataset <- tabledata %>% select(all_of(desc_variables)) %>% 
+  select(-retro)
+
+# Update label names like "In-hospital mortality" instead of "Died in hospital"
+desc_all_table <- desc_dataset %>%
+  tbl_strata(
+    strata = "intervention_text",
+    ~.x %>%
+             tbl_summary(
+               by = "post_intervention_text",
+               statistic = list(all_continuous() ~ "{mean} ({sd})",
+                                age ~ "{median} ({p25}, {p75})"),
+               label = name_to_label,
+               missing_text = "Missing"
+              ) 
+    ) %>%
+  bold_labels() %>%
+  modify_caption(paste0("All included patients n = ", nrow(desc_dataset))) %>%
+  as_gt() %>%
+  tab_options(paste0("All included patients n = ", nrow(desc_dataset)))
+```
+
+```{r main-gam, echo = FALSE, message = FALSE}
+# Primary analysis of in-hospital mortality
+gam_model.i <- gam(hd ~ s(study_month) + post_intervention + s(month, bs = "cc", k = 12),
+                   data = df.i, 
+                   family = "betar",
+                   method = "REML")
+
+gam_model.c <- gam(hd ~ s(study_month) + post_intervention + s(month, bs = "cc", k = 12),
+                   data = df.c, 
+                   family = "betar",
+                   method = "REML")
+
+## Calculate the absolute risk difference from the OR (Since we have high baseline risk, OR is not the same as the Risk Ratio, so we compare with the baseline risk)
+
+# Get baseline mortality rates
+baseline_hd_intervention <- mean(df.i %>% filter(post_intervention == 0) %>% pull(hd), na.rm = TRUE)
+baseline_hd_control <- mean(df.c %>% filter(post_intervention == 0) %>% pull(hd), na.rm = TRUE)
+
+# Get ORs
+or_intervention <- exp(coef(gam_model.i)["post_intervention1"])
+or_control <- exp(coef(gam_model.c)["post_intervention1"])
+
+# Get CIs
+tidy_or.i <- tidy(gam_model.i, parametric = TRUE, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(term == "post_intervention1")
+
+tidy_or.c <- tidy(gam_model.c, parametric = TRUE, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(term == "post_intervention1")
+
+# Extract CIs
+or_lower.i <- tidy_or.i$conf.low
+or_upper.i <- tidy_or.i$conf.high
+or_lower.c <- tidy_or.c$conf.low
+or_upper.c <- tidy_or.c$conf.high
+
+# Post-intervention mortality (intervention group)
+post_hd_intervention <- (or_intervention * baseline_hd_intervention) / 
+                        (1 + (or_intervention - 1) * baseline_hd_intervention)
+post_hd_intervention_lower <- (or_lower.i * baseline_hd_intervention) / 
+                              (1 + (or_lower.i - 1) * baseline_hd_intervention)
+post_hd_intervention_upper <- (or_upper.i * baseline_hd_intervention) / 
+                              (1 + (or_upper.i - 1) * baseline_hd_intervention)
+
+# Post-intervention mortality (control group)
+post_hd_control <- (or_control * baseline_hd_control) / 
+                   (1 + (or_control - 1) * baseline_hd_control)
+post_hd_control_lower <- (or_lower.c * baseline_hd_control) / 
+                         (1 + (or_lower.c - 1) * baseline_hd_control)
+post_hd_control_upper <- (or_upper.c * baseline_hd_control) / 
+                         (1 + (or_upper.c - 1) * baseline_hd_control)
+
+# Absolute risk differences
+abs_change_intervention <- post_hd_intervention - baseline_hd_intervention
+abs_change_intervention_lower <- post_hd_intervention_lower - baseline_hd_intervention
+abs_change_intervention_upper <- post_hd_intervention_upper - baseline_hd_intervention
+
+abs_change_control <- post_hd_control - baseline_hd_control
+abs_change_control_lower <- post_hd_control_lower - baseline_hd_control
+abs_change_control_upper <- post_hd_control_upper - baseline_hd_control
+
+# Scale ARRs to percentage (rounded to one decimal place)
+arr_i <- round(abs_change_intervention * 100, 1)
+arr_i_lower <- round(abs_change_intervention_lower * 100, 1)
+arr_i_upper <- round(abs_change_intervention_upper * 100, 1)
+
+arr_c <- round(abs_change_control * 100, 1)
+arr_c_lower <- round(abs_change_control_lower * 100, 1)
+arr_c_upper <- round(abs_change_control_upper * 100, 1)
+```
+
+```{r check-autocorrelation, eval = FALSE, include = FALSE}
+# Autocorrelation tests, unadjusted and adjusted.
+residuals.na.c <- resid(gam(hd ~ s(study_month) + post_intervention, 
+                   data = df.c, 
+                   family = "betar",
+                   method = "REML"))
+#acf(residuals.na)
+box.not.adjusted.c <- Box.test(residuals.na.c, lag = 12, type = "Ljung-Box", fitdf = 0)
+
+residuals.na.i <- resid(gam(hd ~ s(study_month) + post_intervention + s(month, bs = "cc", k = 12),
+                   data = df.i, 
+                   family = "betar",
+                   method = "REML"))
+#acf(residuals.a)
+box.not.adjusted.i <- Box.test(residuals.na.i, lag = 12, type = "Ljung-Box", fitdf = 0)
+
+# Check autocorrelation in ajusted models
+ac.i <- Box.test(resid(gam_model.i), lag = 12, type = "Ljung-Box", fitdf = 0)$p.value
+ac.c <- Box.test(resid(gam_model.c), lag = 12, type = "Ljung-Box", fitdf = 0)$p.value
+```
+
+```{r check-did-assumptions, eval = FALSE, include = FALSE}
+data %>%
+  filter(retro == FALSE) %>%  # Keep only prospective inclusions
+  count(study_month) %>%      # Count number of patients per study month
+  ggplot(aes(x = study_month, y = n)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Prospective patient inclusions per study month",
+    x = "Study month",
+    y = "Number of inclusions"
+  ) +
+  theme_minimal()
+
+# Check paralell trends in pre-observation phase
+
+# Filter pre-intervention prospective data
+pre_data <- data %>%
+  filter(retro == FALSE, post_intervention == 0) %>%
+  mutate(arm = factor(intervention_text, levels = c("Control arm", "Intervention arm")))
+
+# Plot for in-hospital mortality
+pre_data %>%
+  group_by(study_month, arm) %>%
+  summarise(mean_hd = mean(hd, na.rm = TRUE), .arms = "drop") %>%
+  ggplot(aes(x = study_month, y = mean_hd, color = arm)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "Pre-intervention trends in in-hospital mortality (prospective data only)",
+    x = "Study month",
+    y = "Mean in-hospital mortality",
+    color = "arm"
+  ) +
+  theme_minimal()
+
+# Plot for 30-day mortality
+pre_data %>%
+  group_by(study_month, arm) %>%
+  summarise(mean_s30d = mean(s30d, na.rm = TRUE), .arms = "drop") %>%
+  ggplot(aes(x = study_month, y = mean_s30d, color = arm)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "Pre-intervention trends in 30-day mortality (prospective data only)",
+    x = "Study month",
+    y = "Mean 30-day mortality",
+    color = "arm"
+  ) +
+  theme_minimal()
+ 
+# Test for parallel trends in hd
+hd_model <- gam(hd ~ study_month * arm, data = pre_data)
+summary(hd_model)  # Check interaction term
+
+# Test for parallel trends in s30d
+s30d_model <- gam(s30d ~ study_month * arm, data = pre_data)
+summary(s30d_model)  # Check interaction term
+```
+
+### Time series analysis for in-hospital mortality
+
+### Primary analysis
+
+In the interrupted time series analysis, including 10,086 patients, the intervention phase was associated with a significant reduction in the odds of in-hospital mortality in the intervention arm *(OR: `r ReturnGamResult(gam_model.i, coef = "post_intervention1")`)*, corresponding to an estimated absolute difference of `r arr_i`% *(95% CI `r arr_i_lower`% to `r arr_i_upper`%, p<0.001)*. No significant change was observed in the control arm *(OR: `r ReturnGamResult(gam_model.c, coef = "post_intervention1")`)*, absolute difference `r arr_c`% *(95% CI `r arr_c_lower`% to `r arr_c_upper`%, p=0.835)*(Figure 2).
+
+The study time variable was not statistically significant *(`r ReturnGamResult(gam_model.i, coef = "s(study_month)")` for intervention; `r ReturnGamResult(gam_model.c, coef = "s(study_month)")` for control)*, suggesting that mortality remained otherwise stable over time, with no indication of other time-dependent trends influencing outcomes. We found no significant seasonal effects *(`r ReturnGamResult(gam_model.i, coef = "s(month)")` for intervention; `r ReturnGamResult(gam_model.c, coef = "s(month)")` for control)* and no evidence of autocorrelation in either study group *(p = 0.51 for intervention; p = 0.10 for control)*.
+
+```{r main-gam-plot, echo = FALSE, message = FALSE}
+# Predict
+model_data.i[, "p.hd"] <- predict(gam_model.i, newdata = df.i, type = "response")
+model_data.c[, "p.hd"] <- predict(gam_model.c, newdata = df.c, type = "response")
+model_data.i[, "p.hd.cf"] <- predict(gam_model.i, newdata = df.i.cf, type = "response")
+model_data.c[, "p.hd.cf"] <- predict(gam_model.c, newdata = df.c.cf, type = "response")
+
+gam_plot <- bind_rows(model_data.i, model_data.c) %>% 
+  mutate(arm = ifelse(intervention_center == "Control centers", "Control arm", "Intervention arm"))
+
+gam_figure <- ggplot(gam_plot, aes(x = study_month, y = (hd * 100))) +
+  facet_wrap("arm") +
+  annotate("rect", xmin = 15, xmax = Inf, ymin = 0, ymax = 100, alpha = .2) +
+  geom_point(aes(shape = "Observed mortality"), size = 0.5) +
+  geom_line(aes(y = (p.hd * 100), color = "Predicted mortality", linetype = "Predicted mortality")) +
+  geom_line(aes(y = (p.hd.cf * 100), color = "Counterfactual", linetype = "Counterfactual")) +
+  scale_color_manual(
+    name = NULL,
+    values = c("Predicted mortality" = "red", "Counterfactual" = "blue")
+  ) +
+  scale_linetype_manual(
+    name = NULL,
+    values = c("Predicted mortality" = "solid", "Counterfactual" = "dotted")
+  ) +
+  scale_shape_manual(
+    name = NULL,
+    values = c("Observed mortality" = 16) # 16 is the default point shape
+  ) +
+  theme_light(base_family = "Arial") +
+  labs(
+    title = "Controlled interrupted time-series",
+    subtitle = "Observed and predicted in-hospital mortality over time",
+    x = "Time in months",
+    y = "In-hospital mortality in percent"
+  ) +
+  annotate("segment", x = 15, xend = 15, y = 0, yend = 1, linetype = 2) +
+  annotation_custom(grob = textGrob("Intervention", gp = gpar(fontsize = 8, fontfamily = "Arial")), xmin = 14, xmax = 30, ymin = -1.8, ymax = -1.8) +
+  annotation_custom(grob = textGrob("Observation", gp = gpar(fontsize = 8, fontfamily = "Arial")), xmin = 1, xmax = 12, ymin = -1.8, ymax = -1.8)
+
+```
+
+### Secondary and subgroup analysis
+
+Formally comparing the control and intervention arms in the difference-in-differences analysis, including 3317 prospectively included patients, we found that the intervention was associated with a -12% difference in the in-hospital mortality rate *(-0.12, 95% CI -0.16 to -0.09, p\<0.001)* and a -15% difference in the 30-day mortality rate *(-0.15, 95% CI -0.19 to -0.11, p\<0.001)* in the intervention arm compared to the control arm after adjusting for sex, age, GCS score, Injury Severity Score (ISS) and shock. For major trauma and potentially salvageable trauma patients, the reduction in mortality was more pronounced. No significant mortality change was observed in the control arm for either group (Table 3).
+
+```{r did-analysis-and-table, echo = FALSE, message = FALSE, warning = FALSE}
+# Set spanners that include number of patients in each model
+generate_spanner_labels <- function(models_list) {
+  models_list %>%
+    purrr::map_df(~ broom::glance(.x), .id = "model_type") %>%
+    mutate(model_label = case_when(
+      model_type == "all_patients" ~ "All patients",
+      model_type == "major_trauma" ~ "Major trauma patients",
+      model_type == "salvageable_trauma" ~ "Potentially salvageable trauma patients"
+    )) %>%
+    transmute(spanner_label = paste0("**", model_label, "**", sprintf("(n=%d)", nobs))) %>%
+    pull(spanner_label)
+}
+
+name_to_label <- c(
+  name_to_label,
+  "post_intervention:intervention" = "Intervention Effect"
+)
+
+# Define variables to present
+table_variables <- c("post_intervention:intervention", "sex", "age", "iss", "gcstot", "chock")
+# ----- Build models -----
+pt_model_data <- data %>% 
+  filter(!is.na(s30d), !is.na(hd), !is.na(age), !is.na(sex), !is.na(gcstot), !is.na(iss), !is.na(chock))
+
+# Define your models
+define_did_model <- function(formula, data) {
+  gam(formula, data = data, family = "gaussian")
+}
+
+# All patients
+pt_model_did_hd <- define_did_model(hd ~ post_intervention * intervention + sex + age + gcstot + iss + chock, pt_model_data)
+pt_model_did_s30d <- define_did_model(s30d ~ post_intervention * intervention + sex + age + gcstot + iss + chock, pt_model_data)
+pt_model_did_hd_ua <- define_did_model(hd ~ post_intervention * intervention, pt_model_data)
+pt_model_did_s30d_ua <- define_did_model(s30d ~ post_intervention * intervention, pt_model_data)
+
+# Major trauma
+pt_model_did_mt_hd <- define_did_model(hd ~ post_intervention * intervention + sex + age + gcstot + iss + chock, pt_model_data %>% filter(major_trauma == TRUE))
+pt_model_did_mt_s30d <- define_did_model(s30d ~ post_intervention * intervention + sex + age + gcstot + iss + chock, pt_model_data %>% filter(major_trauma == TRUE))
+pt_model_did_mt_hd_ua <- define_did_model(hd ~ post_intervention * intervention, pt_model_data %>% filter(major_trauma == TRUE))
+pt_model_did_mt_s30d_ua <- define_did_model(s30d ~ post_intervention * intervention, pt_model_data %>% filter(major_trauma == TRUE))
+
+# Potentially salvageable trauma
+pt_model_did_ps_hd <- define_did_model(hd ~ post_intervention * intervention + sex + age + gcstot + iss + chock, pt_model_data %>% filter(between(iss, 16, 23)))
+pt_model_did_ps_s30d <- define_did_model(s30d ~ post_intervention * intervention + sex + age + gcstot + iss + chock, pt_model_data %>% filter(between(iss, 16, 23)))
+pt_model_did_ps_hd_ua <- define_did_model(hd ~ post_intervention * intervention, pt_model_data %>% filter(between(iss, 16, 23)))
+pt_model_did_ps_s30d_ua <- define_did_model(s30d ~ post_intervention * intervention, pt_model_data %>% filter(between(iss, 16, 23)))
+
+# Set spanner labels
+spanner_labels_hd <- generate_spanner_labels(list(all_patients = pt_model_did_hd, major_trauma = pt_model_did_mt_hd, salvageable_trauma = pt_model_did_ps_hd))
+spanner_labels_s30d <- generate_spanner_labels(list(all_patients = pt_model_did_s30d, major_trauma = pt_model_did_mt_s30d, salvageable_trauma = pt_model_did_ps_s30d))
+
+# ----- Adjusted p-values -----
+# Models that need adjustment (the adjusted models only)
+adjusted_models <- tibble(
+  model_name = c("pt_model_did_hd", "pt_model_did_mt_hd", "pt_model_did_ps_hd",
+                 "pt_model_did_s30d", "pt_model_did_mt_s30d", "pt_model_did_ps_s30d"),
+  model = list(pt_model_did_hd, pt_model_did_mt_hd, pt_model_did_ps_hd,
+               pt_model_did_s30d, pt_model_did_mt_s30d, pt_model_did_ps_s30d)
+)
+
+# Extract p-values from tidy_gam
+tidy_results <- adjusted_models %>%
+  mutate(
+    terms = map(model, ~ tidy_gam(.x) %>% filter(term != "(Intercept)"))
+  ) %>%
+  select(model_name, terms) %>%
+  unnest(terms)
+
+# Subgroup models only
+subgroup_models <- c("pt_model_did_mt_hd", "pt_model_did_ps_hd",
+                     "pt_model_did_mt_s30d", "pt_model_did_ps_s30d")
+
+# Get the raw p-values for intervention effect in subgroup models
+intervention_pvals <- tidy_results %>%
+  filter(model_name %in% subgroup_models,
+         term == "post_intervention:intervention") %>%
+  mutate(outcome = ifelse(str_detect(model_name, "s30d"), "s30d", "hd"))
+
+# Apply Holm correction within each outcome group
+adjusted_pvals_only <- intervention_pvals %>%
+  group_by(outcome) %>%
+  mutate(q_value = p.adjust(p.value, method = "holm")) %>%
+  ungroup() %>%
+  select(model_name, term, q_value)
+
+
+#####
+# Add Holm-adjusted p-values for unadjusted models
+unadjusted_models <- tibble(
+  model_name = c("pt_model_did_mt_hd_ua", "pt_model_did_ps_hd_ua",
+                 "pt_model_did_mt_s30d_ua", "pt_model_did_ps_s30d_ua"),
+  outcome = c("hd", "hd", "s30d", "s30d"),
+  model = list(pt_model_did_mt_hd_ua, pt_model_did_ps_hd_ua,
+               pt_model_did_mt_s30d_ua, pt_model_did_ps_s30d_ua)
+)
+
+# Extract raw p-values
+unadjusted_pvals <- unadjusted_models %>%
+  mutate(
+    term = "post_intervention:intervention",
+    p_value = map_dbl(model, ~ tidy_gam(.x) %>%
+                        filter(term == "post_intervention:intervention") %>%
+                        pull(p.value))
+  )
+
+# Combine the subgroup adjusted and unadjusted p-values
+all_intervention_pvals <- bind_rows(
+  intervention_pvals %>% rename(p_value = p.value) %>% select(model_name, term, p_value, outcome),
+  unadjusted_pvals %>% select(model_name, term, p_value, outcome)
+)
+
+# Holm adjust across subgroup models and unadjusted models within each outcome
+adjusted_unadjusted_pvals <- all_intervention_pvals %>%
+  group_by(outcome) %>%
+  mutate(q_value = p.adjust(p_value, method = "holm")) %>%
+  ungroup() %>%
+  select(model_name, term, q_value)
+
+adjusted_pvalues <- bind_rows(
+  tidy_results %>%
+    select(model_name, term),
+  
+  unadjusted_models %>%
+    transmute(
+      model_name,
+      term = "post_intervention:intervention"
+    )
+) %>%
+  left_join(
+    adjusted_unadjusted_pvals %>%
+      select(model_name, term, q_value),
+    by = c("model_name", "term")
+  ) %>%
+  transmute(
+    model_name,
+    term,
+    q.value = q_value  # only 3 columns, nothing else
+  )
+
+
+add_unadjusted_row_clean <- function(tbl, unadjusted_model) {
+  model_name <- deparse(substitute(unadjusted_model))  # auto-detect model name
+  
+  # Get the adjusted p-value if available (subgroup models only)
+  adjusted_q_value <- adjusted_unadjusted_pvals %>%
+    filter(model_name == !!model_name, term == "post_intervention:intervention") %>%
+    pull(q_value)
+
+  unadj_row <- tidy_gam(unadjusted_model, conf.int = TRUE) %>%
+    filter(term == "post_intervention:intervention") %>%
+    transmute(
+      variable = "post_intervention:intervention",
+      var_label = NA,
+      label = "Intervention Effect (Unadjusted)",
+      estimate = estimate,
+      conf.low = conf.low,
+      conf.high = conf.high,
+      original_p_value = style_pvalue(p.value),
+      q.value = ifelse(length(adjusted_q_value) == 0, NA, style_pvalue(adjusted_q_value)),
+      row_type = "level"
+    )
+
+  tbl %>%
+    modify_table_body(~ .x %>%
+      bind_rows(unadj_row, .)
+    )
+}
+
+
+
+hd_did_table <- tbl_merge(
+  list(
+    pt_model_did_hd %>%
+      tbl_regression(intercept = FALSE, exponentiate = FALSE, show_single_row = "sex", include = table_variables, estimate_fun = partial(style_sigfig, digits = 3)) %>%
+      modify_table_body(
+        ~ .x %>%
+          rename(original_p_value = p.value) %>%
+          left_join(adjusted_pvalues %>% filter(model_name == "pt_model_did_hd"), by = "term") %>%
+          mutate(
+            q.value = ifelse(is.na(q.value), NA, style_pvalue(q.value)),
+            original_p_value = style_pvalue(original_p_value)
+          )
+      ) %>%
+      modify_header(original_p_value ~ "**p-value**") %>%
+      add_unadjusted_row_clean(pt_model_did_hd_ua) %>%
+      bold_labels(),
+
+    pt_model_did_mt_hd %>%
+      tbl_regression(intercept = FALSE, exponentiate = FALSE, show_single_row = "sex", include = table_variables, estimate_fun = partial(style_sigfig, digits = 3)) %>%
+      modify_table_body(
+        ~ .x %>%
+          rename(original_p_value = p.value) %>%
+          left_join(adjusted_pvalues %>% filter(model_name == "pt_model_did_mt_hd"), by = "term") %>%
+          mutate(
+            q.value = ifelse(is.na(q.value), NA, style_pvalue(q.value)),
+            original_p_value = style_pvalue(original_p_value)
+          )
+      ) %>%
+      modify_header(original_p_value ~ "**p-value**",
+                    q.value ~ "**Adj. p-value**") %>%
+      bold_labels() %>%
+      add_unadjusted_row_clean(pt_model_did_mt_hd_ua),
+
+    pt_model_did_ps_hd %>%
+      tbl_regression(intercept = FALSE, exponentiate = FALSE, show_single_row = "sex", include = table_variables, estimate_fun = partial(style_sigfig, digits = 3)) %>%
+      modify_table_body(
+        ~ .x %>%
+          rename(original_p_value = p.value) %>%
+          left_join(adjusted_pvalues %>% filter(model_name == "pt_model_did_ps_hd"), by = "term") %>%
+          mutate(
+            q.value = ifelse(is.na(q.value), NA, style_pvalue(q.value)),
+            original_p_value = style_pvalue(original_p_value)
+          )
+      ) %>%
+      modify_header(original_p_value ~ "**p-value**",
+                    q.value ~ "**Adj. p-value**") %>%
+      bold_labels() %>%
+      add_unadjusted_row_clean(pt_model_did_ps_hd_ua)
+  ),
+  tab_spanner = spanner_labels_hd
+) %>%
+  modify_table_body(~.x %>%
+  mutate(label = ifelse(
+    variable %in% names(name_to_label), 
+    name_to_label[variable], 
+    label)))
+
+s30d_did_table <- tbl_merge(
+  list(
+    pt_model_did_s30d %>%
+      tbl_regression(intercept = FALSE, exponentiate = FALSE, show_single_row = "sex", include = table_variables, estimate_fun = partial(style_sigfig, digits = 3)) %>%
+      modify_table_body(
+        ~ .x %>%
+          rename(original_p_value = p.value) %>%
+          left_join(adjusted_pvalues %>% filter(model_name == "pt_model_did_s30d"), by = "term") %>%
+          mutate(
+            q.value = ifelse(is.na(q.value), NA, style_pvalue(q.value)),
+            original_p_value = style_pvalue(original_p_value)
+          )
+      ) %>%
+      modify_header(original_p_value ~ "**p-value**") %>%
+      bold_labels() %>%
+      add_unadjusted_row_clean(pt_model_did_s30d_ua),
+
+    pt_model_did_mt_s30d %>%
+      tbl_regression(intercept = FALSE, exponentiate = FALSE, show_single_row = "sex", include = table_variables, estimate_fun = partial(style_sigfig, digits = 3)) %>%
+      modify_table_body(
+        ~ .x %>%
+          rename(original_p_value = p.value) %>%
+          left_join(adjusted_pvalues %>% filter(model_name == "pt_model_did_mt_s30d"), by = "term") %>%
+          mutate(
+            q.value = ifelse(is.na(q.value), NA, style_pvalue(q.value)),
+            original_p_value = style_pvalue(original_p_value)
+          )
+      ) %>%
+      modify_header(original_p_value ~ "**p-value**",
+                    q.value ~ "**Adj. p-value**") %>%
+      bold_labels() %>%
+      add_unadjusted_row_clean(pt_model_did_mt_s30d_ua),
+
+    pt_model_did_ps_s30d %>%
+      tbl_regression(intercept = FALSE, exponentiate = FALSE, show_single_row = "sex", include = table_variables, estimate_fun = partial(style_sigfig, digits = 3)) %>%
+      modify_table_body(
+        ~ .x %>%
+          rename(original_p_value = p.value) %>%
+          left_join(adjusted_pvalues %>% filter(model_name == "pt_model_did_ps_s30d"), by = "term") %>%
+          mutate(
+            q.value = ifelse(is.na(q.value), NA, style_pvalue(q.value)),
+            original_p_value = style_pvalue(original_p_value)
+          )
+      ) %>%
+      modify_header(original_p_value ~ "**p-value**",
+                    q.value ~ "**Adj. p-value**") %>%
+      bold_labels() %>%
+      add_unadjusted_row_clean(pt_model_did_ps_s30d_ua)
+  ),
+  tab_spanner = spanner_labels_s30d
+) %>%
+  modify_table_body(~.x %>%
+  mutate(label = ifelse(
+    variable %in% names(name_to_label), 
+    name_to_label[variable], 
+    label)))
+
+did_table_global_adjustment <- tbl_stack(
+  list(hd_did_table, s30d_did_table),
+  group_header = c("Outcome: In-Hospital Mortality", "Outcome: 30 Day Mortality")
+) %>%
+  modify_caption("Difference in Differences Analysis (N = {N})") %>%
+  as_gt() %>%
+  tab_caption("Difference in Differences Analysis n = 3317)")
+
+
+```
+
+## Sensitivity analysis
+
+In the unadjusted pre-post analysis of all patients, the intervention was associated with an 8.0% absolute reduction in in-hospital mortality *(95% CI -11% to -5.3%, p<0.001)* and in the prospectively included cohort a 8.5% reduction in in-hospital mortality *(95% CI -12% to -4.8%, p<0.001)* and a 14% reduction in 30-day mortality *(95% CI -18% to -9.5%, p<0.001)*. No statistically significant change was observed in the control arm. Excluding the implementation phase and the COVID-19 period showed results consistent with the main analysis, with a statistically significant reduction in in-hospital mortality in the intervention arm. Excluding the trauma centre period resulted in a non-significant reduction; however, this analysis was limited to nine months of post-intervention data, including the six-month implementation phase. The adjusted analysis in the prospectively included cohort showed a stati    stically significant reduction in both in-hospital and 30-day mortality after adjusting for age, sex, ISS, GCS, and shock. Full results are available in the supplementary material.
+
+# Discussion
+
+Our results indicate that implementing a trauma quality improvement programme using audit filters was associated with a substantial, significant reduction in-hospital mortality of -11.2% *(95% CI -16.0% to –5.5%, p<0.001). We also observed increased use of ultrasound, intubations and CT scans, reflecting changes in care processes in alignment with the audit filters. However, the largest hospital in the intervention arm opened a trauma centre equipped with in-house CT scanner, multiple operating rooms, improved resuscitation capabilities and an increased number of ICU beds nine months after the beginning of the implementation phase. Although our sensitivity analysis revealed a statistical non-significant decrease in mortality before the trauma centre opened, it remains challenging to separate the impacts of the trauma centre and the quality improvement programme or determine whether their effects were synergistic.
+
+Several studies have reported improved mortality, particularly in severely injured patients, after trauma quality improvement implementation.[@Hashmi2013; @Hemmila2018-ea; @Juillard2009; @Reynolds:2017hz; @Dinh2014] However, definitions of trauma quality improvement vary, with heterogeneous interventions reported. Two studies conducted over 20 years ago in Germany and Thailand used trauma audit filters with a similar approach as our study, and reported reduced mortality and improved care processes.[@Ruchholtz2002-fi; @Chadbunchachai:2001td] All were cohort studies using pre-post design. Development of audit filters for trauma has been done in more recent years, one study from Ghana and one from Cameroon.[@Stewart2016; @Wu:2018ez]. These filters differ substantially from those initially developed by ASCOT and later suggested in the WHO guidelines. In our previous study, the usefulness of the filters developed in Ghana and Cameroon was deemed high in India, compared filters developed in HICs.[@Berg:2022]
+
+In HIC trauma quality improvement programmes and audit filters have been criticized for being inefficient in detecting opportunities for improvement and being costly.[@Willis:2007] In obstetric care, audit processes have shown to improve outcomes while also emphasizing the importance of adaptation[@Graham2000-wt], highlighting that standards of care need to be developed considering local priorities and knowledge to ensure that improvement efforts are directed to areas in greatest need. This is particularity important in settings with less developed trauma systems.
+
+The maturity level of a trauma system is linked to reduced mortality and preventable deaths.[@Alharbi2021-yt; @Teixeira2009-xx] Therefore, the effectiveness of these programmes in reducing mortality likely varies with system maturity. In a similar urban Indian setting, over 50% of trauma deaths were estimated to be preventable.[@Roy:2017im] Our results can likely be generalized to settings with similarly mature trauma systems, though local adaptations and contextual factors greatly influence their success. The core process of data collection and multidisciplinary case review can be utilized to empower providers to identify areas for improvement, learning, and education to develop the care provided. This can be conducted for trauma systems at all levels, even though data quality is a known barrier to this in LMICs.[@McIver2024-cp; @Kapanadze2023-oo; @Reynolds:2017hz]
+
+Our study has several limitations. First, the introduction of a new trauma centre at the largest intervention hospital may have influenced outcomes directly or acted synergistically with the trauma quality improvement programme, making it a confounder that could not be fully adjusted for. This hospital also accounted for a larger proportion of patients in the intervention arm, thus contributing more to the aggregate outcome estimates than the smaller intervention hospital. Second, there was an unexpected difference in baseline mortality between the study arms. However, in the primary analysis, each arm was modeled independently, and the control arm was included to account for background trends over time and external events, rather than for direct comparison. In the secondary analysis, we used a difference-in-differences model, which assumes parallel pre-intervention trends rather than equivalent baseline levels. This allowed us to compare outcome changes over time between arms despite baseline differences in mortality. Third, 45 of 61 months fell below the target inclusion for the primary analysis; however, all months contributed data, and the number of time points before and after the intervention exceeded recommended thresholds for interrupted time series analysis. While smaller monthly samples increased uncertainty and variability in monthly estimates, the observed mortality reduction remained robust across analyses. 
+
+Fourth, the COVID-19 pandemic significantly impacted the participating centres. The smaller intervention centre was converted to a COVID-19 hospital, reducing trauma patient intake. Quarantine restrictions also decreased the overall number of trauma patients. Despite extending the study by 18 months and adjusting for the pandemic’s effects in the sensitivity analysis, its long-term impacts were likely beyond our ability to fully account for. The pandemic led to the suspension of review meetings, necessitating a restart post-pandemic. Last, both intervention hospitals receive a high number of transferred patients at varying intervals after the time of injury, potentially introducing bias, as patients may have died before arriving at the study hospital. 
+
+The intervention was designed to provide a structure containing training in trauma quality improvement processes, data collection and multidisciplinary review boards. The ongoing review process and implementation of changes were led entirely by the local teams, without involvement from the core research team. Finally, although we tracked the number of cases reviewed and meetings conducted, and held weekly calls with all project officers to support operations, ensure data collection, and facilitate the generation of reports for review meetings, we did not apply a formal framework to evaluate implementation fidelity. This limits our insight into how consistently the intervention was sustained and engaged with over time.
+
+Despite these limitations, this is the first quasi-experimental study attempting to assess the impact of quality improvement programmes using audit filters on patient outcomes. We conducted a broad and comprehensive statistical analysis that supports our main findings, which are also in alignment with previous research. We believe that there is knowledge on how to select and adapt audit filters and implement a review process, but our understanding of how this translates into changes in care and outcomes is lacking. We also need better understanding of the implementation and sustainability of these programmes in complex health care systems, including how to best tailor them to local needs and detect potential negative effects, especially for other patient populations also competing for care resources.
+
+In conclusion, our results suggest that system-level changes and data-driven quality improvement programmes using audit filters may reduce mortality in trauma patients. However, the challenge to understand what makes these programmes effective, useful and sustainable in terms of improving outcomes remains.
+
+\pagebreak
+
+## Acknowledgement
+
+We would like to thank Johan von Schreeb, professor at the department of Global Public Health at the Karolinska Institutet and Charles Mock, Professor Emeritus of Surgery and Epidemiology, University of Washington for their valuable input during this project. A warm thank you to Manjula Ranagatti and all project officers that have dedicated their time and expertise to this project and ensuring the quality of data collection.
+
+JB and MGW had full access to all the data in the study and takes responsibility for the integrity of the data and the accuracy of the data analysis.
+
+## Author contributions
+
+MGW conceived the study and has been the PI. MGW, KS, MK, NR, SD, LFT, and MP contributed to the design of the study. SD was the project manager during study execution. MGW, KS, MK, NR, SD, JB, MJ, SR, MLN, RS, AM, SC, GB, DB, TK contributed to the execution of the study. JB prepared the data and conducted the statistical analysis. MGW and MP reviewed the results of the statistical analysis. JB drafted the first version of the article. All authors contributed to interpretation of data and critical revisions of the work for important intellectual content. MGW is the guarantor.
+
+## Funding
+
+This work was supported by the Swedish Research Council (2016-02041).
+
+## Competing interests
+
+None declared.
+
+# Tables and figures
+
+*Figure 1: Flow chart*
+
+```{r consort, echo = FALSE, eval = FALSE}
+library(consort)
+library(DiagrammeRsvg)
+library(rsvg)
+library(DiagrammeR)
+
+consort_data <- data %>% mutate(tc_excluded = ifelse(is.na(hd), TRUE, FALSE),
+                reason = case_when(is.na(hd) ~ "Missing in-hospital mortality",
+                                     is.na(month) ~ "Missing study month",
+                                     TRUE ~ NA)) %>%
+  mutate(inclusion_type = ifelse(retro, "Retrospecive", "Prospective")) %>%
+    mutate(reason_did = case_when(retro ~ "Retrospective inclusion",
+                                    is.na(s30d) ~ "Lost to follow-up",
+                                    is.na(gcstot) | is.na(chock) | is.na(sex) | is.na(age) | is.na(iss) ~ "Missing covariates",
+                                    TRUE ~ NA))
+
+# Create the consort plot
+consort_plot <- consort_plot(
+  data = consort_data,
+  orders = list(
+    intervention_text = "Study population",
+    reason = "Excluded",
+    id = "Included i time-series analysis",
+    reason_did = "Excluded",    
+    id = "Included in Difference-in-differences analysis"
+  ),
+  side_box = c("reason", "reason_did"),
+  allocation = c("intervention_text"),
+  labels = c("1" = "Included",
+             "2" = "Randomization of hospitals",
+             "3" = "Time-series analysis",
+             "4" = "Difference-in-differences analysis"))
+
+
+plot(consort_plot, grViz = TRUE) |> 
+    DiagrammeRsvg::export_svg() |> 
+    charToRaw() |> 
+    rsvg::rsvg_pdf("svg_graph.pdf")
+```
+```{r include_consort, echo = FALSE, eval = TRUE}
+knitr::include_graphics("graphics/svg_graph.pdf")
+```
+
+*Figure 2: Interrupted time-series analysis*
+
+```{r gam_figure, fig.width=8, fig.height=6, dpi=300, eval = TRUE}
+plot(gam_figure)
+```
+
+\pagebreak
+
+*Table 1: All included patients, n = `r paste0(nrow(data))`*
+
+```{r descriptive_tables, echo = FALSE}
+desc_all_table
+```
+
+\pagebreak
+
+*Table 2: All prospectively included patients, n = `r paste0(nrow(data %>% filter(!retro)))`*
+
+```{r prospective_descriptive_tables, echo = FALSE}
+desc_prospective_table
+```
+
+\pagebreak
+
+*Table 3: Difference-in-differences analysis* n=3317
+
+```{r did_tables, echo = FALSE}
+did_table_global_adjustment
+```
+
+# References
