@@ -17,7 +17,7 @@ This study evaluates the effect of implementing a trauma quality improvement (QI
 
 ---
 
-## Repository Contents
+## Repository contents
 
 ```
 ├── docs/                        # Manuscript text
